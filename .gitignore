@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+.conda/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+
+# Datasets (UrbanIng-V2X, OpenCOOD data, etc.)
+data/
+datasets/
+*.h5
+*.hdf5
+*.pcd
+*.bin
+*.zip
+*.tar
+*.tar.gz
+
+# Model checkpoints / weights / logs
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+runs/
+logs/
+wandb/
+outputs/
+
+# Jupyter/py cache
+*.log
