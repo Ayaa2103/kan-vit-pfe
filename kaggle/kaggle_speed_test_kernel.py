@@ -86,9 +86,27 @@ def main():
             f"{max_depth} levels deep).")
     print(f"Using dataset_root={dataset_root}", flush=True)
 
+    # AttFuse and KAN-ViT are each run as their OWN subprocess (not two
+    # sequential calls within one process): PyTorch's CUDA caching allocator
+    # doesn't reliably hand memory back to the driver even after
+    # empty_cache(), so measuring both models in-process risks the second
+    # model's peak-memory reading being polluted by the first model's
+    # leftovers. A fresh process gives each model a clean CUDA context.
     script = os.path.join(REPO_DIR, "scripts", "kaggle_speed_test.py")
-    run([sys.executable, script, "--dataset-root", dataset_root,
-        "--n-iters", "20", "--n-warmup", "3", "--num-workers", "2"])
+    common_args = ["--dataset-root", dataset_root,
+                   "--n-iters", "20", "--n-warmup", "3", "--num-workers", "2"]
+    failures = []
+    for model in ["attfuse", "kanvit"]:
+        try:
+            run([sys.executable, script, "--model", model] + common_args)
+        except subprocess.CalledProcessError as e:
+            print(f"*** {model} subprocess failed (exit {e.returncode}) -- "
+                 f"see traceback above. Continuing to the next model so "
+                 f"both attempts are logged. ***", flush=True)
+            failures.append(model)
+    if failures:
+        raise RuntimeError(f"model run(s) failed: {failures} -- see log above "
+                          f"for each one's traceback")
 
 
 if __name__ == "__main__":

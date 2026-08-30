@@ -136,6 +136,18 @@ def main():
                         help="Directory containing train/ and validate/ "
                              "(e.g. /kaggle/input/kan-vit-pfe-urbaning-v2x-opencood). "
                              "If omitted, uses each config's own root_dir/validate_dir.")
+    parser.add_argument("--model", choices=["attfuse", "kanvit", "both"],
+                        default="both",
+                        help="Which model to benchmark. Default 'both' runs "
+                             "them sequentially in this SAME process, which "
+                             "is fine for a quick local check but means the "
+                             "second model's peak-memory reading can be "
+                             "polluted by whatever the first model's CUDA "
+                             "caching allocator didn't release. The Kaggle "
+                             "kernel invokes this script twice with "
+                             "--model attfuse and --model kanvit as two "
+                             "separate subprocesses instead, for a clean "
+                             "CUDA context per model.")
     parser.add_argument("--n-iters", type=int, default=N_ITERS)
     parser.add_argument("--n-warmup", type=int, default=N_WARMUP)
     parser.add_argument("--num-workers", type=int, default=2)
@@ -150,11 +162,16 @@ def main():
              "run on a GPU kernel. Numbers below will be meaningless/CPU-only.",
              flush=True)
 
+    to_run = []
+    if args.model in ("attfuse", "both"):
+        to_run.append((ATTFUSE_HYPES, "AttFuse"))
+    if args.model in ("kanvit", "both"):
+        to_run.append((KANVIT_HYPES, "KAN-ViT"))
+
     results = []
-    results.append(run_model(ATTFUSE_HYPES, "AttFuse", args.dataset_root,
-                             args.n_iters, args.n_warmup, args.num_workers))
-    results.append(run_model(KANVIT_HYPES, "KAN-ViT", args.dataset_root,
-                             args.n_iters, args.n_warmup, args.num_workers))
+    for hypes_path, tag in to_run:
+        results.append(run_model(hypes_path, tag, args.dataset_root,
+                                 args.n_iters, args.n_warmup, args.num_workers))
 
     print(f"\n{'=' * 20} FINAL SUMMARY {'=' * 20}", flush=True)
     if torch.cuda.is_available():
