@@ -80,22 +80,29 @@ def main():
     model = train_utils.create_model(hypes)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # we assume gpu is necessary
+    if torch.cuda.is_available():
+        model.to(device)
+    model_without_ddp = model
+
+    # optimizer setup -- created before the resume-checkpoint load below,
+    # since restoring optimizer state (Adam's exp_avg/exp_avg_sq) requires
+    # an optimizer instance to load that state into.
+    optimizer = train_utils.setup_optimizer(hypes, model_without_ddp)
+
     # if we want to train from last checkpoint.
     if opt.model_dir:
         saved_path = opt.model_dir
         init_epoch, model = train_utils.load_saved_model(saved_path,
-                                                         model)
+                                                         model,
+                                                         optimizer,
+                                                         device)
 
     else:
         init_epoch = 0
         # if we train the model from scratch, we need to create a folder
         # to save the model,
         saved_path = train_utils.setup_train(hypes)
-
-    # we assume gpu is necessary
-    if torch.cuda.is_available():
-        model.to(device)
-    model_without_ddp = model
 
     if opt.distributed:
         model = \
@@ -107,8 +114,6 @@ def main():
     # define the loss
     criterion = train_utils.create_loss(hypes)
 
-    # optimizer setup
-    optimizer = train_utils.setup_optimizer(hypes, model_without_ddp)
     # lr scheduler setup
     num_steps = len(train_loader)
     scheduler = train_utils.setup_lr_schedular(hypes, optimizer, num_steps)
@@ -136,6 +141,7 @@ def main():
             sampler_train.set_epoch(epoch)
 
         pbar2 = tqdm.tqdm(total=len(train_loader), leave=True)
+        train_losses = []
 
         for i, batch_data in enumerate(train_loader):
             # the model will be evaluation mode during validation
@@ -166,6 +172,7 @@ def main():
 
             criterion.logging(epoch, i, len(train_loader), writer, pbar=pbar2)
             pbar2.update(1)
+            train_losses.append(final_loss.item())
 
             if not opt.half:
                 final_loss.backward()
@@ -178,9 +185,21 @@ def main():
             if hypes['lr_scheduler']['core_method'] == 'cosineannealwarm':
                 scheduler.step_update(epoch * num_steps + i)
 
+        train_ave_loss = statistics.mean(train_losses)
+        print('At epoch %d, the training loss is %f' % (epoch, train_ave_loss))
+        writer.add_scalar('Train_Loss_epoch', train_ave_loss, epoch)
+
         if epoch % hypes['train_params']['save_freq'] == 0:
-            torch.save(model_without_ddp.state_dict(),
-                os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))
+            # full training state (weights + optimizer + epoch), not just
+            # the bare weights, so a resumed run (same --model_dir) picks
+            # the optimizer's momentum/variance back up instead of
+            # restarting Adam from zero. See load_saved_model in
+            # train_utils.py for the matching read side.
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model_without_ddp.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))
 
         if epoch % hypes['train_params']['eval_freq'] == 0:
             valid_ave_loss = []

@@ -15,7 +15,7 @@ import torch
 import torch.optim as optim
 import timm
 
-def load_saved_model(saved_path, model):
+def load_saved_model(saved_path, model, optimizer=None, device=None):
     """
     Load saved model if exiseted
 
@@ -25,6 +25,20 @@ def load_saved_model(saved_path, model):
        model saved path
     model : opencood object
         The model instance.
+    optimizer : torch.optim.Optimizer, optional
+        If given and the checkpoint contains optimizer state (current
+        checkpoint format, written by train.py), its state (e.g. Adam's
+        exp_avg/exp_avg_sq) is restored too, so a resumed run continues
+        instead of restarting the optimizer from scratch. Checkpoints
+        written by an older version of this code are a bare model
+        state_dict with no optimizer state -- those still load fine for
+        the model weights, they just can't restore an optimizer.
+    device : torch.device, optional
+        Only used together with `optimizer`. The checkpoint is read with
+        map_location='cpu', and unlike model.load_state_dict,
+        Optimizer.load_state_dict does not move its restored tensors to
+        match the model's device -- without this, the next optimizer.step()
+        after resuming on GPU would crash with a device-mismatch error.
 
     Returns
     -------
@@ -57,7 +71,23 @@ def load_saved_model(saved_path, model):
         checkpoint = torch.load(
             model_file,
             map_location='cpu')
-        model.load_state_dict(checkpoint, strict=False)
+
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            # current format: full training state (weights + optimizer +
+            # epoch), see the save side in train.py.
+            model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            if optimizer is not None and 'optimizer_state_dict' in checkpoint:
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                if device is not None:
+                    for state in optimizer.state.values():
+                        for k, v in state.items():
+                            if torch.is_tensor(v):
+                                state[k] = v.to(device)
+            if 'epoch' in checkpoint:
+                initial_epoch = checkpoint['epoch']
+        else:
+            # legacy format: a bare model state_dict, no optimizer state.
+            model.load_state_dict(checkpoint, strict=False)
 
         del checkpoint
 

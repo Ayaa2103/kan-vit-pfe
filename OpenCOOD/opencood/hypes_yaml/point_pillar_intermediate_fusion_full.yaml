@@ -17,7 +17,7 @@ wild_setting:
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 1
-  epoches: 3
+  epoches: 5
   eval_freq: 1
   save_freq: 1
   max_cav: 5
@@ -110,4 +110,4 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 15]
+  step_size: [10, 15] # epoches is now fixed to 5 (both configs) -- neither milestone falls within this run, so LR stays constant at 0.001 for all 5 epochs. Left as-is: not asked to change it, flagging here so it's a deliberate choice not an oversight.
