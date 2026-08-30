@@ -2,16 +2,30 @@ name: point_pillar_intermediate_fusion
 root_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format_full/train"
 validate_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format_full/validate"
 
+wild_setting:
+  async: false
+  async_mode: 'sim'
+  async_overhead: 100
+  seed: 25
+  loc_err: false
+  xyz_std: 0.2
+  ryp_std: 0.2
+  data_size: 1.06 # Mb!!
+  transmission_speed: 27 # Mbps!!
+  backbone_delay: 10 # ms
+
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 2
   epoches: 3
   eval_freq: 1
   save_freq: 1
+  max_cav: 5
 
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
-  args: []
+  args:
+    cur_ego_pose_flag: True
 
 # preprocess-related
 preprocess:
@@ -51,7 +65,7 @@ postprocess:
     neg_threshold: 0.45
     score_threshold: 0.20
   order: 'hwl' # hwl or lwh
-  max_num: 300 # verified true max on full UrbanIng-V2X dataset (34 seq, train+validate) is 260 fused objects/frame (p99=224); 300 keeps ~15% margin. Kept in sync with point_pillar_intermediate_fusion_kanvit_smoketest.yaml so AttFuse/KAN-ViT comparisons aren't biased by padding size.
+  max_num: 300 # verified true max on full UrbanIng-V2X dataset (34 seq, train+validate) is 260 fused objects/frame (p99=224); 300 keeps ~15% margin. Kept in sync with point_pillar_intermediate_fusion_kanvit_full.yaml so AttFuse/KAN-ViT comparisons aren't biased by padding size.
   nms_thresh: 0.15
 
 # model related
@@ -88,7 +102,7 @@ loss:
 
 optimizer:
   core_method: Adam
-  lr: 0.002
+  lr: 0.001
   args:
     eps: 1e-10
     weight_decay: 1e-4

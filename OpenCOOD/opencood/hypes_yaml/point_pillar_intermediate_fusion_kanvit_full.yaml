@@ -1,13 +1,13 @@
-# KAN-ViT smoke-test config. Note: despite the requested filename (matching
-# the AttFuse smoketest naming from Day 3), this is built from
-# point_pillar_v2xvit.yaml, not point_pillar_intermediate_fusion_smoketest.yaml
-# -- AttFuse's model (point_pillar_intermediate) has no FFN/MLP at all (see
-# Day 4 report), only V2X-ViT's transformer does. Points at the same Day 2
-# mini-sample as the other smoketests. Original point_pillar_v2xvit.yaml
-# and point_pillar_intermediate_fusion_smoketest.yaml are untouched.
+# KAN-ViT Day 5 real-training config. Duplicated from
+# point_pillar_intermediate_fusion_kanvit_smoketest.yaml (built on
+# point_pillar_v2xvit.yaml -- AttFuse's model has no FFN/MLP at all, only
+# V2X-ViT's transformer does, see Day 4 report). Unlike the smoketest, this
+# points at the full 34-sequence UrbanIng-V2X dataset (data/opencood_format_full)
+# instead of the 1-sequence Day 2 mini-sample. Original
+# point_pillar_v2xvit.yaml and the smoketest configs are untouched.
 name: point_pillar_v2xvit_kanvit
-root_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format/train"
-validate_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format/validate"
+root_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format_full/train"
+validate_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format_full/validate"
 
 wild_setting:
   async: false
@@ -32,7 +32,7 @@ train_params:
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args:
-    cur_ego_pose_flag: False
+    cur_ego_pose_flag: True
 
 # preprocess-related
 preprocess:
@@ -70,9 +70,9 @@ postprocess:
   target_args:
     pos_threshold: 0.6
     neg_threshold: 0.45
-    score_threshold: 0.27
+    score_threshold: 0.20
   order: 'hwl' # hwl or lwh
-  max_num: 300 # verified true max on full UrbanIng-V2X dataset (34 seq, train+validate) is 260 fused objects/frame (p99=224); 300 keeps ~15% margin. Kept in sync with point_pillar_intermediate_fusion_smoketest_full.yaml so AttFuse/KAN-ViT comparisons aren't biased by padding size.
+  max_num: 300 # verified true max on full UrbanIng-V2X dataset (34 seq, train+validate) is 260 fused objects/frame (p99=224); 300 keeps ~15% margin. Kept in sync with point_pillar_intermediate_fusion_full.yaml so AttFuse/KAN-ViT comparisons aren't biased by padding size.
   nms_thresh: 0.15
 
 # model related
@@ -171,4 +171,4 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [15, 50]
+  step_size: [10, 15] # provisional -- revisit once epoches is fixed at Kaggle launch time (currently 2 vs AttFuse's 3, so neither value in this pair will actually trigger yet)
