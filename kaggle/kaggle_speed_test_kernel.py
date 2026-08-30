@@ -22,7 +22,10 @@ import subprocess
 import sys
 
 REPO_URL = "https://github.com/Ayaa2103/kan-vit-pfe.git"
-REPO_DIR = "/kaggle/working/kan-vit-pfe"
+# NOT under /kaggle/working: everything under /kaggle/working gets packaged
+# as kernel "output" after the run, and the repo (plus its full .git pack)
+# has no business being in the output artifacts of a diagnostic run.
+REPO_DIR = "/kaggle/tmp/kan-vit-pfe"
 DATASET_SLUG_HINT = "kan-vit-pfe-urbaning-v2x-opencood"
 
 
@@ -32,13 +35,22 @@ def run(cmd):
 
 
 def main():
+    os.makedirs("/kaggle/tmp", exist_ok=True)
     if not os.path.isdir(REPO_DIR):
         run(["git", "clone", "--depth", "1", REPO_URL, REPO_DIR])
     else:
         print(f"{REPO_DIR} already present, skipping clone", flush=True)
 
-    run([sys.executable, "-m", "pip", "install", "--quiet",
-        "open3d", "shapely==2.0.0", "einops", "timm"])
+    # installed one at a time, without --quiet, so a build failure (e.g. a
+    # pinned version with no prebuilt wheel for this image's Python falling
+    # back to a source build) shows its actual error instead of being
+    # swallowed. shapely is intentionally NOT pinned to the exact
+    # requirements.txt version (2.0.0): any 2.x release is API-compatible
+    # for the Polygon/IoU usage in this code path, and pinning to the older
+    # 2.0.0 risks no prebuilt wheel for a newer Python -> source build ->
+    # missing GEOS headers -> failure.
+    for pkg in ["open3d", "shapely>=2.0", "einops", "timm"]:
+        run([sys.executable, "-m", "pip", "install", pkg])
 
     # locate the mounted dataset -- don't hardcode the exact mount name,
     # find whichever /kaggle/input/* directory actually has train/ and
