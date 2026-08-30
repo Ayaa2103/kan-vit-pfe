@@ -42,8 +42,8 @@ Thumbs.db
 .env.*
 
 # Datasets (UrbanIng-V2X, OpenCOOD data, etc.)
-data/
-datasets/
+/data/
+/datasets/
 *.h5
 *.hdf5
 *.pcd
