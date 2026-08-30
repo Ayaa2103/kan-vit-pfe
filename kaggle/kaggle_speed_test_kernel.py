@@ -16,7 +16,6 @@ Python -- so we deliberately do NOT `pip install -r requirements.txt` /
 `pip install -e .`, and just install the 4 packages that ARE imported
 and aren't already on the Kaggle GPU image: open3d, shapely, einops, timm.
 """
-import glob
 import os
 import subprocess
 import sys
@@ -26,7 +25,6 @@ REPO_URL = "https://github.com/Ayaa2103/kan-vit-pfe.git"
 # as kernel "output" after the run, and the repo (plus its full .git pack)
 # has no business being in the output artifacts of a diagnostic run.
 REPO_DIR = "/kaggle/tmp/kan-vit-pfe"
-DATASET_SLUG_HINT = "kan-vit-pfe-urbaning-v2x-opencood"
 
 
 def run(cmd):
@@ -52,28 +50,40 @@ def main():
     for pkg in ["open3d", "shapely>=2.0", "einops", "timm"]:
         run([sys.executable, "-m", "pip", "install", pkg])
 
-    # locate the mounted dataset -- don't hardcode the exact mount name,
-    # find whichever /kaggle/input/* directory actually has train/ and
-    # validate/ subfolders matching this project's dataset.
-    candidates = sorted(glob.glob("/kaggle/input/*"))
-    print(f"/kaggle/input contents: {candidates}", flush=True)
+    # locate the mounted dataset -- don't hardcode the exact mount path.
+    # Kaggle doesn't reliably mount a single attached dataset at
+    # /kaggle/input/<dataset-slug>/: with dataset_sources pushed via the
+    # API/CLI it can show up one level deeper, e.g. /kaggle/input/datasets/
+    # (observed in practice), so walk a few levels under /kaggle/input and
+    # take whichever directory actually has both train/ and validate/
+    # subfolders.
     dataset_root = None
-    for c in candidates:
-        if DATASET_SLUG_HINT in os.path.basename(c) and \
-                os.path.isdir(os.path.join(c, "train")) and \
-                os.path.isdir(os.path.join(c, "validate")):
-            dataset_root = c
-            break
-    if dataset_root is None:
-        for c in candidates:
+    max_depth = 3
+    input_root = "/kaggle/input"
+    all_dirs = [input_root]
+    for depth in range(max_depth):
+        next_level = []
+        for d in all_dirs:
+            try:
+                next_level.extend(
+                    os.path.join(d, e) for e in os.listdir(d)
+                    if os.path.isdir(os.path.join(d, e)))
+            except OSError:
+                pass
+        print(f"[depth {depth}] {next_level}", flush=True)
+        for c in next_level:
             if os.path.isdir(os.path.join(c, "train")) and \
                     os.path.isdir(os.path.join(c, "validate")):
                 dataset_root = c
                 break
+        if dataset_root is not None:
+            break
+        all_dirs = next_level
     if dataset_root is None:
         raise RuntimeError(
             f"Could not find a mounted dataset with train/ and validate/ "
-            f"subfolders under /kaggle/input. Found: {candidates}")
+            f"subfolders anywhere under /kaggle/input (searched "
+            f"{max_depth} levels deep).")
     print(f"Using dataset_root={dataset_root}", flush=True)
 
     script = os.path.join(REPO_DIR, "scripts", "kaggle_speed_test.py")
