@@ -18,6 +18,15 @@ from opencood.tools import multi_gpu_utils
 from opencood.data_utils.datasets import build_dataset
 from opencood.tools import train_utils
 
+# KAN-ViT's ChebyKANLayer (chebykan_layer.py) computes acos(tanh(x)) --
+# tanh saturates to exactly +-1.0 in float32 once |x| gets large enough,
+# and acos's gradient is -1/sqrt(1-x^2), which is infinite exactly at
+# +-1. Without clipping, one such step can produce inf/nan gradients that
+# poison every parameter on the next optimizer.step(). Applies to all
+# models, not just KAN-ViT -- harmless for architectures that never
+# approach this (e.g. AttFuse has no ChebyKAN layers at all).
+GRAD_CLIP_MAX_NORM = 10
+
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -170,15 +179,38 @@ def main():
                                            batch_data['ego']['label_dict'])
 
 
+            # Day 5 incident: KAN-ViT went NaN ~51 steps into epoch 0 and
+            # kept training on corrupted weights for 5 full epochs (~10h)
+            # with nothing catching it -- the loop has no NaN guard, and
+            # NaN loss/gradients don't raise on their own. Check every
+            # loss component (not just total_loss) right after it's
+            # computed, and stop hard the moment any of them isn't finite.
+            non_finite = {name: val for name, val in criterion.loss_dict.items()
+                         if torch.is_tensor(val) and not torch.isfinite(val)}
+            if non_finite:
+                detail = ", ".join(f"{name}={val.item()}"
+                                  for name, val in criterion.loss_dict.items())
+                raise RuntimeError(
+                    f"Non-finite loss at epoch {epoch}, iter {i + 1}/"
+                    f"{len(train_loader)}: {detail}. Stopping immediately "
+                    f"instead of continuing to train on corrupted weights.")
+
             criterion.logging(epoch, i, len(train_loader), writer, pbar=pbar2)
             pbar2.update(1)
             train_losses.append(final_loss.item())
 
             if not opt.half:
                 final_loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                              max_norm=GRAD_CLIP_MAX_NORM)
                 optimizer.step()
             else:
                 scaler.scale(final_loss).backward()
+                # gradients are still loss-scaled at this point; unscale
+                # before clipping or the norm threshold is meaningless
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                              max_norm=GRAD_CLIP_MAX_NORM)
                 scaler.step(optimizer)
                 scaler.update()
 

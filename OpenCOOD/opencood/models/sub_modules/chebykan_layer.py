@@ -22,6 +22,13 @@ class ChebyKANLayer(nn.Module):
     def forward(self, x):
         # Chebyshev polynomials are defined on [-1, 1], so normalize x there first.
         x = torch.tanh(x)
+        # tanh saturates to exactly +-1.0 in float32 once |x| is large
+        # enough, and acos's gradient (-1/sqrt(1-x^2)) is infinite exactly
+        # at +-1 -- one such step poisons every parameter with NaN on the
+        # next backward. Clamp strictly inside (-1, 1) so the gradient
+        # stays large-but-finite instead. Confirmed root cause of the
+        # Day 5 KAN-ViT NaN divergence (first bad loss ~step 51).
+        x = x.clamp(-1 + 1e-6, 1 - 1e-6)
         # (batch, inputdim) -> (batch, inputdim, degree+1)
         x = x.view((-1, self.inputdim, 1)).expand(-1, -1, self.degree + 1)
         # T_n(cos(theta)) = cos(n * theta), theta = acos(x)

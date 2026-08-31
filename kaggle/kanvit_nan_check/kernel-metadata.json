@@ -1,0 +1,16 @@
+{
+  "id": "ayablh/kan-vit-pfe-kanvit-nan-check",
+  "title": "kan-vit-pfe-kanvit-nan-check",
+  "code_file": "kanvit_nan_check_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": ["ayablh/kan-vit-pfe-urbaning-v2x-opencood"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
