@@ -27,6 +27,15 @@ from opencood.tools import train_utils
 # approach this (e.g. AttFuse has no ChebyKAN layers at all).
 GRAD_CLIP_MAX_NORM = 10
 
+# Was 8. Day 5: AttFuse's 5-epoch Kaggle run took ~7.5h against a ~1.8h
+# estimate from the speed diagnostic (num_workers=2) -- a ~5x slowdown
+# consistent with 8 dataloader workers oversubscribing a Kaggle GPU
+# instance's few vCPUs. 2 is what the speed diagnostic and the KAN-ViT
+# NaN-fix validation (200 iters, ~1.09s/it, matching the diagnostic's
+# 0.894s/it) were both actually run and confirmed fast at -- not
+# re-derived from vCPU count, just empirically what's known to work here.
+NUM_WORKERS = 2
+
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -62,24 +71,24 @@ def main():
 
         train_loader = DataLoader(opencood_train_dataset,
                                   batch_sampler=batch_sampler_train,
-                                  num_workers=8,
+                                  num_workers=NUM_WORKERS,
                                   collate_fn=opencood_train_dataset.collate_batch_train)
         val_loader = DataLoader(opencood_validate_dataset,
                                 sampler=sampler_val,
-                                num_workers=8,
+                                num_workers=NUM_WORKERS,
                                 collate_fn=opencood_train_dataset.collate_batch_train,
                                 drop_last=False)
     else:
         train_loader = DataLoader(opencood_train_dataset,
                                   batch_size=hypes['train_params']['batch_size'],
-                                  num_workers=8,
+                                  num_workers=NUM_WORKERS,
                                   collate_fn=opencood_train_dataset.collate_batch_train,
                                   shuffle=True,
                                   pin_memory=False,
                                   drop_last=True)
         val_loader = DataLoader(opencood_validate_dataset,
                                 batch_size=hypes['train_params']['batch_size'],
-                                num_workers=8,
+                                num_workers=NUM_WORKERS,
                                 collate_fn=opencood_train_dataset.collate_batch_train,
                                 shuffle=False,
                                 pin_memory=False,
