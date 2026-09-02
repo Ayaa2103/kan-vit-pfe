@@ -43,6 +43,11 @@ MODELS = {
                               "point_pillar_intermediate_fusion_kanvit_full.yaml"),
         "model_dir_name": "ckpt_kanvit_day5",
     },
+    "v2xvit_classic": {
+        "hypes": os.path.join(REPO_ROOT, "OpenCOOD", "opencood", "hypes_yaml",
+                              "point_pillar_intermediate_fusion_v2xvit_classic_full.yaml"),
+        "model_dir_name": "ckpt_v2xvit_classic_day5",
+    },
 }
 
 

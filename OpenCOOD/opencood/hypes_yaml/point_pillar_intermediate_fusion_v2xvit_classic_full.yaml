@@ -13,8 +13,9 @@
 #     base_transformer.py::FeedForward) instead of KANFeedForward.
 #     kan_degree/kan_pool_size dropped since FeedForward doesn't read
 #     them (V2XTEncoder only reads mlp_dim/dropout from this block).
-# Diagnostic-only config (speed/VRAM test) -- not wired into any Day 5
-# training kernel.
+# Day 5 real-training config, wired into kaggle/train_v2xvit_classic/ via
+# scripts/kaggle_train_entry.py --model v2xvit_classic (5 epochs, full
+# 34-sequence dataset) -- same as AttFuse/KAN-ViT's Day 5 training setup.
 name: point_pillar_v2xvit_classic
 root_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format_full/train"
 validate_dir: "C:/Users/vPro/Projects/kan-vit-pfe/data/opencood_format_full/validate"
