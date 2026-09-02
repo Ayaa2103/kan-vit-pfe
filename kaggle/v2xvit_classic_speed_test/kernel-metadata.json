@@ -1,0 +1,16 @@
+{
+  "id": "aya1001/kan-vit-pfe-v2xvit-classic-speed-test",
+  "title": "kan-vit-pfe-v2xvit-classic-speed-test",
+  "code_file": "v2xvit_classic_speed_test_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": ["aya1001/kan-vit-pfe-urbaning-v2x-opencood"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

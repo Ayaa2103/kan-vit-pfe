@@ -36,6 +36,31 @@ GRAD_CLIP_MAX_NORM = 10
 # re-derived from vCPU count, just empirically what's known to work here.
 NUM_WORKERS = 2
 
+# Day 5 investigation: real training ran at ~5h10/epoch (~3.3s/it average)
+# despite the speed diagnostic measuring ~0.9-1.1s/it, and the raw
+# per-iteration log timings were erratic (1.2s one iter, 4-6.5s the next,
+# occasional much worse spikes) rather than uniformly slow. GPU compute
+# for a fixed-shape batch is deterministic -- that variance pattern is
+# the signature of an I/O-bound dataloader (each sample needs open3d to
+# read 1-3 agents' .pcd files, ~1.8-1.9MB each, off Kaggle's mounted
+# dataset), not a GPU compute ceiling. Three safe, model-unrelated fixes
+# for that, applied uniformly to every config since this is shared
+# DataLoader code:
+#   - persistent_workers: without it, PyTorch tears down and respawns
+#     the whole worker pool (re-importing torch/open3d in each new
+#     process) at the start of every single epoch.
+#   - prefetch_factor: more per-worker lookahead buffer to absorb read
+#     latency jitter instead of the training loop stalling on it.
+#   - pin_memory: standard-issue faster host->GPU transfer, unrelated to
+#     the stall investigation but free and correct to enable.
+# These change nothing about what gets computed -- only how eagerly data
+# is fetched -- so they don't touch batch_size/lr/epochs or any modeling
+# parameter. NOTE: this addresses dataloader-side overhead; if the actual
+# ceiling is Kaggle's raw storage throughput for a 40GB mounted dataset,
+# no amount of client-side buffering fully removes it.
+PIN_MEMORY = True
+PREFETCH_FACTOR = 4
+
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -72,26 +97,36 @@ def main():
         train_loader = DataLoader(opencood_train_dataset,
                                   batch_sampler=batch_sampler_train,
                                   num_workers=NUM_WORKERS,
-                                  collate_fn=opencood_train_dataset.collate_batch_train)
+                                  collate_fn=opencood_train_dataset.collate_batch_train,
+                                  pin_memory=PIN_MEMORY,
+                                  persistent_workers=NUM_WORKERS > 0,
+                                  prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None)
         val_loader = DataLoader(opencood_validate_dataset,
                                 sampler=sampler_val,
                                 num_workers=NUM_WORKERS,
                                 collate_fn=opencood_train_dataset.collate_batch_train,
-                                drop_last=False)
+                                drop_last=False,
+                                pin_memory=PIN_MEMORY,
+                                persistent_workers=NUM_WORKERS > 0,
+                                prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None)
     else:
         train_loader = DataLoader(opencood_train_dataset,
                                   batch_size=hypes['train_params']['batch_size'],
                                   num_workers=NUM_WORKERS,
                                   collate_fn=opencood_train_dataset.collate_batch_train,
                                   shuffle=True,
-                                  pin_memory=False,
+                                  pin_memory=PIN_MEMORY,
+                                  persistent_workers=NUM_WORKERS > 0,
+                                  prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None,
                                   drop_last=True)
         val_loader = DataLoader(opencood_validate_dataset,
                                 batch_size=hypes['train_params']['batch_size'],
                                 num_workers=NUM_WORKERS,
                                 collate_fn=opencood_train_dataset.collate_batch_train,
                                 shuffle=False,
-                                pin_memory=False,
+                                pin_memory=PIN_MEMORY,
+                                persistent_workers=NUM_WORKERS > 0,
+                                prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None,
                                 drop_last=True)
 
     print('---------------Creating Model------------------')

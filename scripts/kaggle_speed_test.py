@@ -33,6 +33,9 @@ ATTFUSE_HYPES = os.path.join(
 KANVIT_HYPES = os.path.join(
     REPO_ROOT, "OpenCOOD", "opencood", "hypes_yaml",
     "point_pillar_intermediate_fusion_kanvit_full.yaml")
+V2XVIT_CLASSIC_HYPES = os.path.join(
+    REPO_ROOT, "OpenCOOD", "opencood", "hypes_yaml",
+    "point_pillar_intermediate_fusion_v2xvit_classic_full.yaml")
 
 N_ITERS = 20
 N_WARMUP = 3  # excluded from the steady-state timing average
@@ -136,7 +139,8 @@ def main():
                         help="Directory containing train/ and validate/ "
                              "(e.g. /kaggle/input/kan-vit-pfe-urbaning-v2x-opencood). "
                              "If omitted, uses each config's own root_dir/validate_dir.")
-    parser.add_argument("--model", choices=["attfuse", "kanvit", "both"],
+    parser.add_argument("--model",
+                        choices=["attfuse", "kanvit", "v2xvit_classic", "both"],
                         default="both",
                         help="Which model to benchmark. Default 'both' runs "
                              "them sequentially in this SAME process, which "
@@ -167,6 +171,8 @@ def main():
         to_run.append((ATTFUSE_HYPES, "AttFuse"))
     if args.model in ("kanvit", "both"):
         to_run.append((KANVIT_HYPES, "KAN-ViT"))
+    if args.model == "v2xvit_classic":
+        to_run.append((V2XVIT_CLASSIC_HYPES, "V2X-ViT-classic"))
 
     results = []
     for hypes_path, tag in to_run:
