@@ -27,14 +27,24 @@ from opencood.tools import train_utils
 # approach this (e.g. AttFuse has no ChebyKAN layers at all).
 GRAD_CLIP_MAX_NORM = 10
 
-# Was 8. Day 5: AttFuse's 5-epoch Kaggle run took ~7.5h against a ~1.8h
-# estimate from the speed diagnostic (num_workers=2) -- a ~5x slowdown
-# consistent with 8 dataloader workers oversubscribing a Kaggle GPU
-# instance's few vCPUs. 2 is what the speed diagnostic and the KAN-ViT
-# NaN-fix validation (200 iters, ~1.09s/it, matching the diagnostic's
-# 0.894s/it) were both actually run and confirmed fast at -- not
-# re-derived from vCPU count, just empirically what's known to work here.
-NUM_WORKERS = 2
+# Was 8, then 2, now 3. Day 5: AttFuse's 5-epoch Kaggle run took ~7.5h
+# against a ~1.8h estimate -- a ~5x slowdown consistent with 8 dataloader
+# workers oversubscribing a Kaggle GPU instance's few vCPUs, so this was
+# dropped to 2. V2X-ViT-classic's real run then showed the same kind of
+# gap again at num_workers=2 (~2.2-4.8s/it, in a clean alternating
+# fast/slow pattern -- the round-robin signature of exactly 2 workers not
+# keeping up), which a bounded 80-iteration diagnostic explained: the
+# original ~0.9-1.1s/it speed-test measured GPU forward/backward only
+# (its timer starts after next(it) returns), never the DataLoader/
+# SpVoxelPreprocessor CPU cost the real per-iteration loop actually pays.
+# That diagnostic, timed loop-inclusive like this file's tqdm actually
+# is, confirmed num_workers=3 recovers ~0.94s/it with a regular
+# (non-sawtooth) rate and all 4 of the T4 instance's vCPUs at ~93-95%
+# with no oversubscription (3 workers + main process = 4 processes for
+# 4 cores, an exact fit); num_workers=4 (5 processes for 4 cores) was
+# marginally worse (higher tail latency). 3 is the confirmed optimum for
+# this instance, not a guess.
+NUM_WORKERS = 3
 
 # Day 5 investigation: real training ran at ~5h10/epoch (~3.3s/it average)
 # despite the speed diagnostic measuring ~0.9-1.1s/it, and the raw
@@ -55,9 +65,10 @@ NUM_WORKERS = 2
 #     the stall investigation but free and correct to enable.
 # These change nothing about what gets computed -- only how eagerly data
 # is fetched -- so they don't touch batch_size/lr/epochs or any modeling
-# parameter. NOTE: this addresses dataloader-side overhead; if the actual
-# ceiling is Kaggle's raw storage throughput for a 40GB mounted dataset,
-# no amount of client-side buffering fully removes it.
+# parameter. Follow-up (see NUM_WORKERS above): these alone weren't
+# enough -- the real ceiling on a 2-worker pool was CPU-side voxelization
+# throughput, not read/transfer latency, so no amount of extra buffering
+# fixed it. Raising NUM_WORKERS to match the instance's vCPU count did.
 PIN_MEMORY = True
 PREFETCH_FACTOR = 4
 
