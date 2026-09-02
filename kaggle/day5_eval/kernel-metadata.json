@@ -1,0 +1,19 @@
+{
+  "id": "aya1001/kan-vit-pfe-day5-eval-attfuse-kanvit",
+  "title": "kan-vit-pfe-day5-eval-attfuse-kanvit",
+  "code_file": "day5_eval_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": [
+    "aya1001/kan-vit-pfe-urbaning-v2x-opencood",
+    "aya1001/kan-vit-pfe-day5-eval-checkpoints"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
