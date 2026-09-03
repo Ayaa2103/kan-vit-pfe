@@ -72,6 +72,32 @@ NUM_WORKERS = 3
 PIN_MEMORY = True
 PREFETCH_FACTOR = 4
 
+# Day 5 investigation continued: V2X-ViT-classic's real run showed
+# s/it climbing steadily with WALL-CLOCK TIME elapsed (not with iteration
+# count) even at NUM_WORKERS=3 -- 1.1-1.5s/it right after a resume,
+# ~5.7s/it by the next epoch, on TWO different Kaggle accounts/instances.
+# That time-correlated (not iteration-correlated) shape doesn't match a
+# per-sample data-loading cost (which would depend on which frames get
+# drawn, not on how long the process has been up), so a periodic
+# mid-epoch checkpoint is cheap insurance regardless of the actual root
+# cause (in-process leak vs Kaggle-instance-level degradation): it lets
+# a stalled run be restarted well before a 12h wall-clock cap costs a
+# whole epoch. 0 (or None) disables this and leaves behavior identical
+# to before. Deliberately reuses the SAME filename the end-of-epoch save
+# for this epoch will use (net_epoch{epoch+1}.pth) with 'epoch': epoch
+# (not epoch+1) inside -- load_saved_model resumes from the checkpoint's
+# stored 'epoch' field, not from the filename, so this doesn't require
+# any change to the resume/checkpoint-discovery logic in train_utils.py
+# or scripts/kaggle_train_entry.py: a restart after a mid-epoch save
+# just redoes the current epoch from these weights (cheap: at most
+# CHECKPOINT_EVERY_N_ITERS iterations of redundant compute) instead of
+# restarting that epoch from scratch or, worse, from the previous
+# epoch's checkpoint. Left at 0 (disabled, no behavior change) until
+# explicitly turned on for a restart -- not enabled by this same commit,
+# so a routine future `kaggle kernels push` doesn't silently start
+# behaving differently.
+CHECKPOINT_EVERY_N_ITERS = 0
+
 
 def train_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
@@ -271,6 +297,16 @@ def main():
 
             if hypes['lr_scheduler']['core_method'] == 'cosineannealwarm':
                 scheduler.step_update(epoch * num_steps + i)
+
+            if CHECKPOINT_EVERY_N_ITERS and (i + 1) % CHECKPOINT_EVERY_N_ITERS == 0:
+                # 'epoch': epoch (not epoch+1) -- this epoch isn't done,
+                # so a resume from this file must redo it, not skip to
+                # the next one. See CHECKPOINT_EVERY_N_ITERS above.
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model_without_ddp.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }, os.path.join(saved_path, 'net_epoch%d.pth' % (epoch + 1)))
 
         train_ave_loss = statistics.mean(train_losses)
         print('At epoch %d, the training loss is %f' % (epoch, train_ave_loss))
