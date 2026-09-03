@@ -11,7 +11,7 @@
   "machine_shape": "NvidiaTeslaT4",
   "dataset_sources": [
     "aya1001/kan-vit-pfe-urbaning-v2x-opencood",
-    "aya1001/kan-vit-pfe-v2xvit-classic-resume-epoch0"
+    "najat101/kan-vit-pfe-v2xvit-classic-resume-epoch2"
   ],
   "competition_sources": [],
   "kernel_sources": [],
