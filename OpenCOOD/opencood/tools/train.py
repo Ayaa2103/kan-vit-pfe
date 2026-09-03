@@ -72,6 +72,35 @@ NUM_WORKERS = 3
 PIN_MEMORY = True
 PREFETCH_FACTOR = 4
 
+# Day 5 restart diagnostic: temporarily False (was NUM_WORKERS > 0, i.e.
+# True) to test whether persistent worker processes are the reason s/it
+# climbs with wall-clock time -- if a leak lives in a long-lived worker
+# process (PyTorch's or open3d's dataloading/PCD-reading internals, not
+# anything in this repo's own dataset/preprocessor code, which was
+# checked and found clean), forcing PyTorch to tear down and respawn the
+# whole worker pool at the start of every epoch would reset it each time
+# instead of letting it accumulate for the run's full duration. Costs
+# the worker-respawn overhead (re-importing torch/open3d) once per
+# epoch -- acceptable for this test given the alternative (climbing to
+# 5-9s/it) is far worse. Revert to `NUM_WORKERS > 0` if this run's rate
+# stays flat and the platform-level cause gets investigated instead.
+PERSISTENT_WORKERS = False
+
+# Day 5 restart diagnostic: TensorBoard logging was writer.add_scalar()
+# on every single iteration (11200 calls/epoch across the two scalars in
+# point_pillar_loss.py's logging()) with no periodic writer.flush() --
+# only per-epoch granularity is actually needed for the report, and an
+# unflushed writer buffering thousands of unwritten events for hours is
+# a plausible (if unconfirmed) contributor to the same time-correlated
+# slowdown. TENSORBOARD_LOG_EVERY_N_ITERS thins the add_scalar calls
+# (pbar.set_description, i.e. the visible per-iteration progress text,
+# still updates every iteration regardless -- see point_pillar_loss.py's
+# logging(), writer is now optional there); TENSORBOARD_FLUSH_EVERY_N_ITERS
+# forces those thinned-out events to disk periodically instead of
+# relying on however tensorboardX's internal buffer happens to drain.
+TENSORBOARD_LOG_EVERY_N_ITERS = 15
+TENSORBOARD_FLUSH_EVERY_N_ITERS = 200
+
 # Day 5 investigation continued: V2X-ViT-classic's real run showed
 # s/it climbing steadily with WALL-CLOCK TIME elapsed (not with iteration
 # count) even at NUM_WORKERS=3 -- 1.1-1.5s/it right after a resume,
@@ -92,11 +121,11 @@ PREFETCH_FACTOR = 4
 # just redoes the current epoch from these weights (cheap: at most
 # CHECKPOINT_EVERY_N_ITERS iterations of redundant compute) instead of
 # restarting that epoch from scratch or, worse, from the previous
-# epoch's checkpoint. Left at 0 (disabled, no behavior change) until
-# explicitly turned on for a restart -- not enabled by this same commit,
-# so a routine future `kaggle kernels push` doesn't silently start
-# behaving differently.
-CHECKPOINT_EVERY_N_ITERS = 0
+# epoch's checkpoint. Turned on for the Day 5 restart investigating the
+# time-correlated slowdown (persistent_workers=False below, in the same
+# restart): bounds how much progress a proactive or forced restart can
+# lose to at most this many iterations.
+CHECKPOINT_EVERY_N_ITERS = 1000
 
 
 def train_parser():
@@ -136,7 +165,7 @@ def main():
                                   num_workers=NUM_WORKERS,
                                   collate_fn=opencood_train_dataset.collate_batch_train,
                                   pin_memory=PIN_MEMORY,
-                                  persistent_workers=NUM_WORKERS > 0,
+                                  persistent_workers=PERSISTENT_WORKERS,
                                   prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None)
         val_loader = DataLoader(opencood_validate_dataset,
                                 sampler=sampler_val,
@@ -144,7 +173,7 @@ def main():
                                 collate_fn=opencood_train_dataset.collate_batch_train,
                                 drop_last=False,
                                 pin_memory=PIN_MEMORY,
-                                persistent_workers=NUM_WORKERS > 0,
+                                persistent_workers=PERSISTENT_WORKERS,
                                 prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None)
     else:
         train_loader = DataLoader(opencood_train_dataset,
@@ -153,7 +182,7 @@ def main():
                                   collate_fn=opencood_train_dataset.collate_batch_train,
                                   shuffle=True,
                                   pin_memory=PIN_MEMORY,
-                                  persistent_workers=NUM_WORKERS > 0,
+                                  persistent_workers=PERSISTENT_WORKERS,
                                   prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None,
                                   drop_last=True)
         val_loader = DataLoader(opencood_validate_dataset,
@@ -162,7 +191,7 @@ def main():
                                 collate_fn=opencood_train_dataset.collate_batch_train,
                                 shuffle=False,
                                 pin_memory=PIN_MEMORY,
-                                persistent_workers=NUM_WORKERS > 0,
+                                persistent_workers=PERSISTENT_WORKERS,
                                 prefetch_factor=PREFETCH_FACTOR if NUM_WORKERS > 0 else None,
                                 drop_last=True)
 
@@ -276,9 +305,13 @@ def main():
                     f"{len(train_loader)}: {detail}. Stopping immediately "
                     f"instead of continuing to train on corrupted weights.")
 
-            criterion.logging(epoch, i, len(train_loader), writer, pbar=pbar2)
+            log_writer = writer if (i + 1) % TENSORBOARD_LOG_EVERY_N_ITERS == 0 else None
+            criterion.logging(epoch, i, len(train_loader), log_writer, pbar=pbar2)
             pbar2.update(1)
             train_losses.append(final_loss.item())
+
+            if (i + 1) % TENSORBOARD_FLUSH_EVERY_N_ITERS == 0:
+                writer.flush()
 
             if not opt.half:
                 final_loss.backward()
@@ -341,6 +374,11 @@ def main():
             print('At epoch %d, the validation loss is %f' % (epoch,
                                                               valid_ave_loss))
             writer.add_scalar('Validate_Loss', valid_ave_loss, epoch)
+
+        # guarantees this epoch's Train_Loss_epoch/Validate_Loss scalars
+        # are actually on disk before the next epoch starts, regardless
+        # of the in-loop TENSORBOARD_FLUSH_EVERY_N_ITERS cadence above
+        writer.flush()
 
     print('Training Finished, checkpoints saved to %s' % saved_path)
 

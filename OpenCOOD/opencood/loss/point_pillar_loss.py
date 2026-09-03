@@ -212,7 +212,7 @@ class PointPillarLoss(nn.Module):
         return boxes1, boxes2
 
 
-    def logging(self, epoch, batch_id, batch_len, writer, pbar=None):
+    def logging(self, epoch, batch_id, batch_len, writer=None, pbar=None):
         """
         Print out  the loss function for current iteration.
 
@@ -224,8 +224,11 @@ class PointPillarLoss(nn.Module):
             The current batch.
         batch_len : int
             Total batch length in one iteration of training,
-        writer : SummaryWriter
-            Used to visualize on tensorboard
+        writer : SummaryWriter, optional
+            Used to visualize on tensorboard. None skips the
+            add_scalar calls for this call (pbar's per-iteration text
+            still updates either way) -- callers use this to log to
+            TensorBoard less often than every iteration.
         """
         total_loss = self.loss_dict['total_loss']
         reg_loss = self.loss_dict['reg_loss']
@@ -241,8 +244,8 @@ class PointPillarLoss(nn.Module):
                       epoch, batch_id + 1, batch_len,
                       total_loss.item(), conf_loss.item(), reg_loss.item()))
 
-
-        writer.add_scalar('Regression_loss', reg_loss.item(),
-                          epoch*batch_len + batch_id)
-        writer.add_scalar('Confidence_loss', conf_loss.item(),
-                          epoch*batch_len + batch_id)
+        if writer is not None:
+            writer.add_scalar('Regression_loss', reg_loss.item(),
+                              epoch*batch_len + batch_id)
+            writer.add_scalar('Confidence_loss', conf_loss.item(),
+                              epoch*batch_len + batch_id)
