@@ -1,0 +1,19 @@
+{
+  "id": "najat101/kan-vit-pfe-day5-eval-v2xvit-classic",
+  "title": "kan-vit-pfe-day5-eval-v2xvit-classic",
+  "code_file": "day5_eval_v2xvit_classic_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": [
+    "aya1001/kan-vit-pfe-urbaning-v2x-opencood",
+    "najat101/kan-vit-pfe-v2xvit-classic-eval-checkpoint"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
