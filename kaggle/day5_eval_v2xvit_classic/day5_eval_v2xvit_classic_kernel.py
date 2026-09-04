@@ -42,6 +42,37 @@ def find_dir_containing(input_root, required_subdirs, max_depth=4):
         f"Could not find a directory with {required_subdirs} under {input_root}.")
 
 
+def find_dir_with_checkpoint(input_root, max_depth=4):
+    """
+    Find a directory that IS the checkpoint folder itself (contains
+    config.yaml directly alongside a *epoch*.pth file) -- unlike
+    find_dir_containing, this doesn't assume a named subfolder, since a
+    Kaggle dataset created from a single top-level staging folder
+    extracts that folder's contents flat at the dataset root (no nested
+    subfolder), unlike a multi-folder upload (e.g. attfuse/ + kanvit/ in
+    the same dataset) which does preserve each folder name.
+    """
+    import glob
+    all_dirs = [input_root]
+    for depth in range(max_depth):
+        next_level = []
+        for d in all_dirs:
+            try:
+                next_level.extend(
+                    os.path.join(d, e) for e in os.listdir(d)
+                    if os.path.isdir(os.path.join(d, e)))
+            except OSError:
+                pass
+        print(f"[input search depth {depth}] {next_level}", flush=True)
+        for c in next_level:
+            if os.path.isfile(os.path.join(c, "config.yaml")) and \
+                    glob.glob(os.path.join(c, "*epoch*.pth")):
+                return c
+        all_dirs = next_level
+    raise RuntimeError(
+        f"Could not find a directory with config.yaml + *epoch*.pth under {input_root}.")
+
+
 def rewrite_config_dataset_paths(config_path, dataset_root):
     with open(config_path, "r", encoding="utf-8") as f:
         text = f.read()
@@ -68,7 +99,7 @@ def main():
     dataset_root = find_dir_containing("/kaggle/input", ["train", "validate"])
     print(f"Using dataset_root={dataset_root}", flush=True)
 
-    ckpt_root = find_dir_containing("/kaggle/input", ["v2xvit_classic"])
+    ckpt_root = find_dir_with_checkpoint("/kaggle/input")
     print(f"Using ckpt_root={ckpt_root}", flush=True)
 
     inference_script = os.path.join(REPO_DIR, "OpenCOOD", "opencood", "tools", "inference.py")
@@ -82,7 +113,7 @@ def main():
     model_dir = os.path.join(WORK_DIR, f"eval_{tag}")
     if os.path.isdir(model_dir):
         shutil.rmtree(model_dir)
-    shutil.copytree(os.path.join(ckpt_root, tag), model_dir)
+    shutil.copytree(ckpt_root, model_dir)
 
     config_path = os.path.join(model_dir, "config.yaml")
     rewrite_config_dataset_paths(config_path, dataset_root)
