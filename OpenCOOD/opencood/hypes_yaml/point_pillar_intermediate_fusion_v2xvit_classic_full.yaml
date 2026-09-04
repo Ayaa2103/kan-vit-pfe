@@ -34,7 +34,7 @@ wild_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 1
+  batch_size: &batch_size 1  # kept in sync with the KAN-ViT config, which OOM'd at batch_size=2 on a T4 16GB -- see that file's comment
   epoches: 5
   eval_freq: 1
   save_freq: 1

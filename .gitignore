@@ -41,7 +41,9 @@ Thumbs.db
 .env
 .env.*
 
-# Datasets (UrbanIng-V2X, OpenCOOD data, etc.)
+# Datasets (UrbanIng-V2X, OpenCOOD data, etc.). Anchored at the repo
+# root (leading /) on purpose -- an unanchored "datasets/" would also
+# match OpenCOOD/opencood/data_utils/datasets/, which is source code.
 /data/
 /datasets/
 *.h5

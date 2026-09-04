@@ -69,6 +69,11 @@ def _walk_dirs(input_root, max_depth):
 
 
 def find_dataset_root(input_root="/kaggle/input", max_depth=3):
+    # Walks multiple levels instead of assuming /kaggle/input/<dataset-slug>/
+    # -- observed on an actual run that a dataset attached via
+    # dataset_sources mounts one level deeper, at
+    # /kaggle/input/datasets/<owner>/<dataset-slug>/, not directly under
+    # /kaggle/input/<dataset-slug>/ as the naming would suggest.
     for level in _walk_dirs(input_root, max_depth):
         for c in level:
             if os.path.isdir(os.path.join(c, "train")) and \

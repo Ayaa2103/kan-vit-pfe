@@ -15,6 +15,16 @@ import graph), and the pinned numba version has no wheel for recent
 Python -- so we deliberately do NOT `pip install -r requirements.txt` /
 `pip install -e .`, and just install the 4 packages that ARE imported
 and aren't already on the Kaggle GPU image: open3d, shapely, einops, timm.
+shapely is installed as `shapely>=2.0`, not requirements.txt's exact
+`shapely==2.0.0` pin -- that exact version has no prebuilt wheel for the
+Kaggle image's Python, which fell back to a source build needing GEOS
+headers the image doesn't have; any 2.x is API-compatible here.
+
+Accelerator note: every kernel-metadata.json in this repo pins
+machine_shape to NvidiaTeslaT4, not Kaggle's default NvidiaTeslaP100 --
+P100 (compute capability sm_60) errors out at runtime ("CUDA error: no
+kernel image is available for execution on the device") against the
+Kaggle image's PyTorch build, which only ships sm_70+.
 """
 import os
 import subprocess

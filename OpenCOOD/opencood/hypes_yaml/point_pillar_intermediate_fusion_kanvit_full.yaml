@@ -23,7 +23,7 @@ wild_setting:
 
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 1
+  batch_size: &batch_size 1  # KAN-ViT OOM'd at batch_size=2 on a T4 16GB (pwindow attention einsum), even in isolation -- kept at 1 in all three Day-5 configs so the comparison stays symmetric
   epoches: 5
   eval_freq: 1
   save_freq: 1
