@@ -15,6 +15,21 @@ from opencood.models.fuse_modules.v2xvit_kan import V2XTransformerKAN
 
 
 class PointPillarTransformerKanvit(nn.Module):
+    """
+    Full KAN-ViT cooperative-perception model: PointPillars per-agent
+    feature extraction (PillarVFE -> scatter -> BEV backbone) followed
+    by intermediate fusion across agents (V2XTransformerKAN) and two
+    1x1-conv detection heads (classification + box regression). This is
+    the model.core_method the training pipeline builds when
+    `model.core_method: point_pillar_transformer_kanvit` in the hypes
+    yaml -- see point_pillar_intermediate_fusion_kanvit_full.yaml (Day 5
+    real-training config) or the _smoketest variant (1-sequence sanity
+    check). Structurally identical to point_pillar_transformer.py (the
+    AttFuse/V2X-ViT-classic model) except fusion_net is
+    V2XTransformerKAN instead of V2XTransformer -- see that file and
+    v2xvit_kan.py for what actually changes.
+    """
+
     def __init__(self, args):
         super(PointPillarTransformerKanvit, self).__init__()
 
@@ -64,6 +79,12 @@ class PointPillarTransformerKanvit(nn.Module):
             p.requires_grad = False
 
     def forward(self, data_dict):
+        # 1) per-agent feature extraction: raw LiDAR points were already
+        # voxelized upstream (SpVoxelPreprocessor, at data-loading time,
+        # not here) -- PillarVFE encodes each voxel's points into one
+        # pillar feature, scatter places pillars back onto a 2D BEV grid
+        # per agent, and the BEV backbone runs ordinary 2D convolutions
+        # over that grid to get spatial_features_2d.
         voxel_features = data_dict['processed_lidar']['voxel_features']
         voxel_coords = data_dict['processed_lidar']['voxel_coords']
         voxel_num_points = data_dict['processed_lidar']['voxel_num_points']
@@ -87,6 +108,13 @@ class PointPillarTransformerKanvit(nn.Module):
         if self.compression:
             spatial_features_2d = self.naive_compressor(spatial_features_2d)
 
+        # 2) regroup: record_len says how many agents contributed to
+        # each sample in the batch (variable, up to max_cav) -- regroup
+        # turns the flat (total_agents_in_batch, C, H, W) tensor into a
+        # padded (batch, max_cav, C, H, W) tensor + a mask, so every
+        # sample has the same shape regardless of its real agent count.
+        # prior_encoding carries per-agent metadata (e.g. timestamp delta,
+        # used by RTE inside the fusion transformer) broadcast over H, W.
         regroup_feature, mask = regroup(spatial_features_2d,
                                         record_len,
                                         self.max_cav)
@@ -95,6 +123,9 @@ class PointPillarTransformerKanvit(nn.Module):
                                                regroup_feature.shape[4])
         regroup_feature = torch.cat([regroup_feature, prior_encoding], dim=2)
 
+        # 3) intermediate fusion across agents (V2X-ViT with KAN FFN --
+        # see v2xvit_kan.py), then two 1x1 conv heads: psm (per-anchor
+        # objectness/class score) and rm (per-anchor box regression).
         regroup_feature = regroup_feature.permute(0, 1, 3, 4, 2)
         fused_feature = self.fusion_net(regroup_feature, mask, spatial_correction_matrix)
         fused_feature = fused_feature.permute(0, 3, 1, 2)

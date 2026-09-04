@@ -9,6 +9,22 @@ import torch.nn as nn
 
 
 class ChebyKANLayer(nn.Module):
+    """
+    One Kolmogorov-Arnold layer: (batch, input_dim) -> (batch, output_dim).
+
+    A standard nn.Linear learns one scalar weight per (input, output)
+    edge. A KAN layer instead learns one learnable 1D *function* per
+    edge, applied to that input before summing -- here, each edge's
+    function is a degree-`degree` Chebyshev polynomial expansion (first
+    kind), i.e. output_o = sum_i sum_d cheby_coeffs[i, o, d] * T_d(x_i),
+    with the T_d evaluated via the standard identity
+    T_d(cos(theta)) = cos(d * theta), theta = acos(x_i). Chebyshev
+    polynomials only need x in [-1, 1] and one coefficient tensor
+    (input_dim, output_dim, degree+1) -- no grid/knot bookkeeping like
+    the original KAN paper's B-splines, which is why this variant was
+    picked for a 4GB-VRAM GPU.
+    """
+
     def __init__(self, input_dim, output_dim, degree):
         super(ChebyKANLayer, self).__init__()
         self.inputdim = input_dim

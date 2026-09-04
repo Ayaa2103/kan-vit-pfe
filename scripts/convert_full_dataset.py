@@ -4,7 +4,17 @@ one sequence at a time: extract .7z -> convert via urbaning's official
 do_one_sequence() -> merge object classes under 'vehicles' -> delete the
 extracted copy (keep only the original .7z and the OpenCOOD output).
 
-Never touches data/raw/. Writes to data/opencood_format_full/{train,validate}/.
+Never touches data/raw/. Writes to data/opencood_format_full/{train,validate}/,
+one subfolder per sequence, and inside each: one subfolder per CAV
+(infrastructure sensors included, named by their numeric ID -- OpenCOOD
+makes no ego/infra distinction at this layer), containing a
+timestamp.yaml + timestamp.pcd pair per frame. That per-CAV/per-timestamp
+layout, and each yaml's flat 'vehicles' dict of {object_id: box params},
+is exactly what OpenCOOD's own dataset loaders (see
+opencood/data_utils/datasets/basedataset.py) expect -- this script's job
+is entirely about producing that shape from UrbanIng-V2X's own on-disk
+format, no OpenCOOD-side code needed to read it afterward.
+
 Robust: a failure on one sequence is logged and the script moves on to the
 next. Stops cleanly if free disk space drops below MIN_FREE_GB.
 """
@@ -70,6 +80,15 @@ VALIDATE_SEQS = [
 ]
 ALL_SEQS = [(s, "train") for s in TRAIN_SEQS] + [(s, "validate") for s in VALIDATE_SEQS]
 
+# do_one_sequence()'s raw per-frame yaml has one dict per *object class*
+# (e.g. 'car', 'pedestrian', ...), each mapping object_id -> box params,
+# plus a handful of non-object scalar/pose keys at the same top level.
+# NON_OBJECT_KEYS lets merge_vehicles_key() tell the two apart generically
+# (skip these plus anything already named 'vehicles' or 'camera*', keep
+# every other dict-valued key) instead of hardcoding UrbanIng-V2X's
+# specific class names, which merge_vehicles_key merges into one flat
+# 'vehicles' dict -- OpenCOOD's own datasets don't distinguish object
+# classes, they expect every detectable object under this one key.
 NON_OBJECT_KEYS = {'ego_speed', 'lidar_pose', 'predicted_ego_pos', 'true_ego_pos', 'vehicles'}
 
 

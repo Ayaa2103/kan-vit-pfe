@@ -15,6 +15,19 @@ import torch.nn as nn
 
 
 class V2XTEncoderKAN(nn.Module):
+    """
+    KAN-ViT variant of v2xvit_basic.V2XTEncoder: same encoder loop
+    (per layer: V2XFusionBlock attention, then a feed-forward block with
+    a residual add), same STTF spatial alignment and RTE time encoding.
+    The only change is what the feed-forward block is -- KANFeedForward
+    (Chebyshev-KAN, see chebykan_layer.py) instead of the original's
+    plain 2-layer MLP. `kan_degree`/`kan_pool_size`, read here from the
+    `feed_forward` config block (default degree=4, pool_size=1 i.e. no
+    spatial pooling if omitted -- see KANFeedForward's own docstring for
+    why the real configs set pool_size>1), are the only new
+    hyperparameters this adds over the base encoder's config schema.
+    """
+
     def __init__(self, args):
         super().__init__()
 
@@ -70,6 +83,15 @@ class V2XTEncoderKAN(nn.Module):
 
 
 class V2XTransformerKAN(nn.Module):
+    """
+    Thin wrapper matching v2xvit_basic.V2XTransformer's interface: wraps
+    V2XTEncoderKAN and keeps only the ego agent's output (index 0 along
+    the agent/L dimension) after fusion, since the encoder returns one
+    feature map per agent but downstream detection heads only need the
+    ego's. This is the class point_pillar_transformer_kanvit.py builds
+    as its fusion_net.
+    """
+
     def __init__(self, args):
         super(V2XTransformerKAN, self).__init__()
 
