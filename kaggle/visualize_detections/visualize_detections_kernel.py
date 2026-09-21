@@ -28,10 +28,13 @@ WORK_DIR = "/kaggle/working"
 # Bounded set of validation-split frame indices to render (same frames
 # across all models, for direct visual comparison). Spread across the
 # 1200-frame validation set so they aren't all from one sequence.
-FRAME_INDICES = "400"
-# Which models to render this push. Trimmed to one for the first
-# (Xvfb/Open3D feasibility) test push; set to all three once confirmed.
-TAGS = ["attfuse"]
+FRAME_INDICES = "50,400,800,1100"
+# Xvfb/Open3D headless capture confirmed working (see git history: three
+# failed test pushes -- black PNGs from a missing XDG_RUNTIME_DIR, then
+# missing Mesa software GL, then capture_screen_image()'s do_render
+# defaulting to False -- fixed in vis_utils.py) on a single model/frame.
+# Full set now that it's verified.
+TAGS = ["attfuse", "v2xvit_classic", "kanvit"]
 
 
 def run(cmd, **kwargs):
