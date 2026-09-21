@@ -580,7 +580,7 @@ def save_o3d_visualization(element, save_path):
         The save path.
     """
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(visible=False)
     for i in range(len(element)):
         vis.add_geometry(element[i])
         vis.update_geometry(element[i])
@@ -588,7 +588,15 @@ def save_o3d_visualization(element, save_path):
     vis.poll_events()
     vis.update_renderer()
 
-    vis.capture_screen_image(save_path)
+    # capture_screen_image()'s do_render defaults to False, meaning it
+    # blindly saves whatever the last update_renderer() left in the
+    # framebuffer. A single poll_events()+update_renderer() call right
+    # after create_window() is not reliably enough for that first frame
+    # to actually be drawn (confirmed: this produced solid-black PNGs
+    # even with a verified-working Mesa/llvmpipe software GL context) --
+    # do_render=True makes Open3D render a fresh frame as part of the
+    # capture call itself instead of trusting the prior one.
+    vis.capture_screen_image(save_path, do_render=True)
     vis.destroy_window()
 
 
