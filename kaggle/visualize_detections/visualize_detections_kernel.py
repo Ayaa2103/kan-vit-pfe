@@ -83,9 +83,16 @@ def main():
         run([sys.executable, "-m", "pip", "install", pkg])
 
     # Open3D's legacy Visualizer.create_window() needs a GL/X context even
-    # for off-screen capture -- xvfb-run provides a virtual display.
+    # for off-screen capture -- xvfb-run provides the virtual X display,
+    # but Xvfb has no GLX/3D support of its own: without Mesa's software
+    # rasterizer (llvmpipe) explicitly forced via LIBGL_ALWAYS_SOFTWARE,
+    # Open3D's GL context "succeeds" but renders nothing, producing a
+    # solid-black capture (confirmed on the first two test pushes: no
+    # crash, correct box counts logged, black PNG both times -- the
+    # XDG_RUNTIME_DIR fix alone was not sufficient).
     run(["apt-get", "update"])
-    run(["apt-get", "install", "-y", "xvfb"])
+    run(["apt-get", "install", "-y", "xvfb", "libgl1-mesa-dri",
+        "libglu1-mesa", "mesa-utils"])
 
     dataset_root = find_dir_containing("/kaggle/input", ["train", "validate"])
     print(f"Using dataset_root={dataset_root}", flush=True)
@@ -110,16 +117,28 @@ def main():
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(REPO_DIR, "OpenCOOD") + \
         os.pathsep + env.get("PYTHONPATH", "")
-    # First test push captured solid-black PNGs; the log showed
-    # "XDG_RUNTIME_DIR not set" once per frame, right where Open3D's
-    # GLFW backend creates its window -- a known cause of a GL context
-    # that "succeeds" but never actually renders under Xvfb in a bare
-    # container. Point it at a real, writable directory.
     xdg_dir = "/tmp/xdg-runtime"
     os.makedirs(xdg_dir, mode=0o700, exist_ok=True)
     env["XDG_RUNTIME_DIR"] = xdg_dir
+    # Force Mesa's software rasterizer (llvmpipe) -- see the apt-get
+    # comment above for why this, not just Xvfb, is needed.
+    env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    env["GALLIUM_DRIVER"] = "llvmpipe"
 
-    cmd = ["xvfb-run", "-a", sys.executable, script,
+    # Diagnostic: confirm a real GL renderer is behind the virtual
+    # display before spending time on the actual render. If this prints
+    # "Mesa" / "llvmpipe" the GL context is real; if it errors or prints
+    # nothing, the render below is expected to fail the same way again
+    # and the log here is what the next fix should be based on.
+    try:
+        run(["xvfb-run", "-a", "--server-args=-screen 0 1920x1080x24",
+            "glxinfo", "-B"], env=env)
+    except Exception as e:
+        print(f"glxinfo diagnostic failed (non-fatal): {e}", flush=True)
+
+    cmd = ["xvfb-run", "-a",
+          "--server-args=-screen 0 1920x1080x24",
+          sys.executable, script,
           *model_dir_args,
           "--frame-indices", FRAME_INDICES,
           "--out-dir", out_dir]
