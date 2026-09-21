@@ -28,7 +28,7 @@ WORK_DIR = "/kaggle/working"
 # Bounded set of validation-split frame indices to render (same frames
 # across all models, for direct visual comparison). Spread across the
 # 1200-frame validation set so they aren't all from one sequence.
-FRAME_INDICES = "50,400,800,1100"
+FRAME_INDICES = "400"
 # Which models to render this push. Trimmed to one for the first
 # (Xvfb/Open3D feasibility) test push; set to all three once confirmed.
 TAGS = ["attfuse"]
@@ -110,6 +110,14 @@ def main():
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(REPO_DIR, "OpenCOOD") + \
         os.pathsep + env.get("PYTHONPATH", "")
+    # First test push captured solid-black PNGs; the log showed
+    # "XDG_RUNTIME_DIR not set" once per frame, right where Open3D's
+    # GLFW backend creates its window -- a known cause of a GL context
+    # that "succeeds" but never actually renders under Xvfb in a bare
+    # container. Point it at a real, writable directory.
+    xdg_dir = "/tmp/xdg-runtime"
+    os.makedirs(xdg_dir, mode=0o700, exist_ok=True)
+    env["XDG_RUNTIME_DIR"] = xdg_dir
 
     cmd = ["xvfb-run", "-a", sys.executable, script,
           *model_dir_args,
