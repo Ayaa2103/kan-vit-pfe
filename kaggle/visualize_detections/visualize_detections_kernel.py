@@ -9,11 +9,16 @@ Open3D's legacy Visualizer needs a GL context even for off-screen
 capture_screen_image(), which a bare Kaggle container doesn't provide --
 installs and runs everything under Xvfb (a virtual X server) via xvfb-run.
 
-FRAME_INDICES/TAGS_TO_MODEL_DIRS below are deliberately small: this is a
-qualitative check, not a full evaluation pass (already done separately via
-inference.py). Start with a single model/frame to confirm Xvfb + Open3D
-headless capture actually produces a real (non-black) image before
-spending GPU time rendering the full set.
+Report-figure pass: instead of guessing frame indices, --select has
+kaggle_visualize_detections.py scan a candidate pool of validation
+frames and keep the ones where V2X-ViT-classic's TP count at strict
+IoU=0.7 (the same eval_utils matching the real AP numbers use) beats
+KAN-ViT's by the most -- i.e. frames where the AP gap at strict
+thresholds is actually visible, not just a number in a table. Each
+selected frame is rendered for all three models (cropped to the
+box region, thickened outlines, title + legend burned in -- see
+scripts/annotate_vis_frame.py) plus a V2X-ViT-classic-vs-KAN-ViT
+side-by-side composite.
 """
 import os
 import re
@@ -25,16 +30,17 @@ REPO_URL = "https://github.com/Ayaa2103/kan-vit-pfe.git"
 REPO_DIR = "/kaggle/tmp/kan-vit-pfe"
 WORK_DIR = "/kaggle/working"
 
-# Bounded set of validation-split frame indices to render (same frames
-# across all models, for direct visual comparison). Spread across the
-# 1200-frame validation set so they aren't all from one sequence.
-FRAME_INDICES = "50,400,800,1100"
 # Xvfb/Open3D headless capture confirmed working (see git history: three
 # failed test pushes -- black PNGs from a missing XDG_RUNTIME_DIR, then
 # missing Mesa software GL, then capture_screen_image()'s do_render
-# defaulting to False -- fixed in vis_utils.py) on a single model/frame.
-# Full set now that it's verified.
+# defaulting to False -- fixed in vis_utils.py) on a single model/frame,
+# then the full 3-model x 4-frame set with the original, unannotated
+# (uncropped, no legend) renderer.
 TAGS = ["attfuse", "v2xvit_classic", "kanvit"]
+COMPARE_A, COMPARE_B = "v2xvit_classic", "kanvit"
+TOP_N = 4
+SELECT_STRIDE = 15
+MIN_GT = 5
 
 
 def run(cmd, **kwargs):
@@ -82,7 +88,7 @@ def main():
     else:
         print(f"{REPO_DIR} already present, skipping clone", flush=True)
 
-    for pkg in ["open3d", "shapely>=2.0", "einops", "timm"]:
+    for pkg in ["open3d", "shapely>=2.0", "einops", "timm", "Pillow"]:
         run([sys.executable, "-m", "pip", "install", pkg])
 
     # Open3D's legacy Visualizer.create_window() needs a GL/X context even
@@ -143,7 +149,11 @@ def main():
           "--server-args=-screen 0 1920x1080x24",
           sys.executable, script,
           *model_dir_args,
-          "--frame-indices", FRAME_INDICES,
+          "--select",
+          "--compare-a", COMPARE_A, "--compare-b", COMPARE_B,
+          "--top-n", str(TOP_N),
+          "--select-stride", str(SELECT_STRIDE),
+          "--min-gt", str(MIN_GT),
           "--out-dir", out_dir]
     run(cmd, env=env)
 

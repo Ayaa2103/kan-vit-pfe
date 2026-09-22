@@ -293,6 +293,47 @@ def visualize_single_sample_output_gt(pred_tensor,
         vis.run()
         vis.destroy_window()
 
+    o3d_pcd, oabbs_pred, oabbs_gt = build_o3d_geometries(
+        pred_tensor, gt_tensor, pcd, mode=mode)
+
+    visualize_elements = [o3d_pcd] + oabbs_pred + oabbs_gt
+    if show_vis:
+        custom_draw_geometry(o3d_pcd, oabbs_pred, oabbs_gt)
+    if save_path:
+        save_o3d_visualization(visualize_elements, save_path)
+
+
+def build_o3d_geometries(pred_tensor, gt_tensor, pcd, mode='constant'):
+    """
+    Build the Open3D point cloud + prediction/ground-truth oriented
+    bounding boxes for one sample, without drawing or saving anything --
+    factored out of visualize_single_sample_output_gt so other renderers
+    (e.g. a report-figure renderer that crops/annotates the capture) can
+    reuse the exact same geometry construction (including the
+    left->right-hand coordinate flip) instead of duplicating it.
+
+    Parameters
+    ----------
+    pred_tensor : torch.Tensor
+        (N, 8, 3) prediction.
+
+    gt_tensor : torch.Tensor
+        (N, 8, 3) groundtruth bbx.
+
+    pcd : torch.Tensor
+        PointCloud, (N, 4).
+
+    mode : str
+        Color rendering mode for the point cloud.
+
+    Returns
+    -------
+    o3d_pcd : o3d.geometry.PointCloud
+    oabbs_pred : list of o3d.geometry.OrientedBoundingBox
+        Red (1, 0, 0) -- model predictions.
+    oabbs_gt : list of o3d.geometry.OrientedBoundingBox
+        Green (0, 1, 0) -- ground truth.
+    """
     if len(pcd.shape) == 3:
         pcd = pcd[0]
     origin_lidar = pcd
@@ -312,11 +353,7 @@ def visualize_single_sample_output_gt(pred_tensor,
     oabbs_pred = bbx2oabb(pred_tensor, color=(1, 0, 0))
     oabbs_gt = bbx2oabb(gt_tensor, color=(0, 1, 0))
 
-    visualize_elements = [o3d_pcd] + oabbs_pred + oabbs_gt
-    if show_vis:
-        custom_draw_geometry(o3d_pcd, oabbs_pred, oabbs_gt)
-    if save_path:
-        save_o3d_visualization(visualize_elements, save_path)
+    return o3d_pcd, oabbs_pred, oabbs_gt
 
 
 def visualize_single_sample_output_bev(pred_box, gt_box, pcd, dataset,
@@ -596,6 +633,78 @@ def save_o3d_visualization(element, save_path):
     # even with a verified-working Mesa/llvmpipe software GL context) --
     # do_render=True makes Open3D render a fresh frame as part of the
     # capture call itself instead of trusting the prior one.
+    vis.capture_screen_image(save_path, do_render=True)
+    vis.destroy_window()
+
+
+def save_o3d_visualization_cropped(o3d_pcd, oabbs_pred, oabbs_gt, save_path,
+                                   margin_ratio=0.3, min_margin=8.0,
+                                   point_size=2.5, line_width=6.0,
+                                   window_size=(1600, 1000)):
+    """
+    Like save_o3d_visualization, but frames the camera tightly around the
+    predicted/ground-truth boxes instead of the full point cloud --
+    save_o3d_visualization's default camera fit is pulled wide by the
+    LiDAR's full sensing range (up to +-140m), leaving the actual boxes
+    (typically within a much smaller region near the ego vehicle) as a
+    tiny cluster surrounded by empty canvas. Crops the point cloud to
+    that region (plus a margin) before adding it, so Open3D's own
+    fit-to-content camera reset frames the crop instead of the full range
+    -- no manual camera math needed.
+
+    line_width is set on the render option as a best-effort thickening
+    (many OpenGL drivers, including the Mesa software rasterizer used for
+    headless Kaggle rendering, cap line width to 1px regardless of this
+    setting -- callers that need guaranteed-visible thick outlines should
+    additionally dilate the red/green pixels in the saved PNG).
+
+    Parameters
+    ----------
+    o3d_pcd : o3d.geometry.PointCloud
+    oabbs_pred, oabbs_gt : list of o3d.geometry.OrientedBoundingBox
+        From build_o3d_geometries().
+    save_path : str
+    margin_ratio : float
+        Extra margin around the pred+gt box extent, as a fraction of that
+        extent's size (per axis).
+    min_margin : float
+        Minimum margin in meters, so a scene with very few/tiny boxes
+        still gets reasonable context instead of an near-zero-size crop.
+    point_size, line_width : float
+        Open3D render option values.
+    window_size : (int, int)
+    """
+    all_boxes = oabbs_pred + oabbs_gt
+    if all_boxes:
+        mins = np.array([b.get_min_bound() for b in all_boxes])
+        maxs = np.array([b.get_max_bound() for b in all_boxes])
+        lo = mins.min(axis=0)
+        hi = maxs.max(axis=0)
+        margin = np.maximum((hi - lo) * margin_ratio, min_margin)
+        crop_box = o3d.geometry.AxisAlignedBoundingBox(lo - margin, hi + margin)
+        pcd_to_add = o3d_pcd.crop(crop_box)
+    else:
+        # no boxes at all (empty frame) -- nothing to crop to, fall back
+        # to the full cloud rather than an undefined region.
+        pcd_to_add = o3d_pcd
+
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(visible=False, width=window_size[0], height=window_size[1])
+
+    opt = vis.get_render_option()
+    opt.background_color = np.asarray([1, 1, 1])
+    opt.point_size = point_size
+    opt.line_width = line_width
+
+    vis.add_geometry(pcd_to_add)
+    for ele in all_boxes:
+        vis.add_geometry(ele)
+    # re-fit the camera to what's actually been added (the crop + boxes),
+    # not whatever default view create_window started with.
+    vis.reset_view_point(True)
+
+    vis.poll_events()
+    vis.update_renderer()
     vis.capture_screen_image(save_path, do_render=True)
     vis.destroy_window()
 
